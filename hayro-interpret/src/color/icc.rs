@@ -6,6 +6,29 @@ use moxcms::{
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, OnceLock};
 
+/// Transform options that do not depend on the CPU the code runs on.
+///
+/// moxcms defaults to its fixed-point (Q2.13) pipeline, and that pipeline is
+/// not the same code on every architecture: x86 has SSE4.1/AVX2
+/// implementations, aarch64 falls back to the generic scalar one for 8-bit,
+/// and they do not agree. Measured on an ordinary sRGB profile, transforming
+/// (16, 0, 239): aarch64 returns (7, 0, 255) and x86_64 (7, 0, 239) -- the
+/// blue channel clipping to white on one platform and passing through on the
+/// other, for a transform that is nearly an identity. The float pipeline
+/// returns the same bytes on both, for all 256 sample pixels, and it is the
+/// accurate one: x86's fixed-point output is close to it and aarch64's is not.
+///
+/// The cost is about 10% on this transform (20M pixels in 29.7ms fixed against
+/// 32.7ms float, same machine). A renderer whose colours depend on the CPU it
+/// runs on cannot have a pixel baseline at all, which is what makes that trade
+/// worth making here.
+fn deterministic_options() -> TransformOptions {
+    TransformOptions {
+        prefer_fixed_point: false,
+        ..TransformOptions::default()
+    }
+}
+
 struct ICCColorRepr {
     number_components: usize,
     is_srgb: bool,
@@ -64,7 +87,7 @@ impl ICCProfile {
                 .create_in_place_transform_8bit(
                     src_layout,
                     &dest_luma_profile,
-                    TransformOptions::default(),
+                    deterministic_options(),
                 )
                 .ok()
         } else {
@@ -72,11 +95,7 @@ impl ICCProfile {
         };
         let transform_in_place_u8 = if src_layout == Layout::Rgb {
             src_profile
-                .create_in_place_transform_8bit(
-                    src_layout,
-                    &dest_profile,
-                    TransformOptions::default(),
-                )
+                .create_in_place_transform_8bit(src_layout, &dest_profile, deterministic_options())
                 .ok()
         } else {
             None
@@ -89,7 +108,7 @@ impl ICCProfile {
                     src_layout,
                     &dest_profile,
                     Layout::Rgb,
-                    TransformOptions::default(),
+                    deterministic_options(),
                 )
                 .ok()?;
             (None, OnceLock::from(Some(transform_u8)))
@@ -130,7 +149,7 @@ impl ICCProfile {
                         self.0.src_layout,
                         &ColorProfile::new_srgb(),
                         Layout::Rgb,
-                        TransformOptions::default(),
+                        deterministic_options(),
                     )
                     .ok()
             })

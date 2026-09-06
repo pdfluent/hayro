@@ -187,11 +187,19 @@ fn convert_inner(image: &Image<'_>, buf: &mut [u8]) -> ImageResult<()> {
             }
         };
 
+        // The float pipeline, not moxcms' fixed-point default: the fixed-point
+        // implementations differ per architecture and disagree, so an embedded
+        // profile would decode to different bytes on x86 and aarch64. Same
+        // reason as `hayro-interpret`'s `deterministic_options`, measured
+        // there.
         let transform = src_profile.create_transform_8bit(
             src_layout,
             &dest_profile,
             dest_layout,
-            TransformOptions::default(),
+            TransformOptions {
+                prefer_fixed_point: false,
+                ..TransformOptions::default()
+            },
         )?;
 
         let mut transformed = vec![0; (width * height * out_channels) as usize];
