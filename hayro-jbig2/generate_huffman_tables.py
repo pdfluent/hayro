@@ -6,7 +6,7 @@ This script implements the Huffman table building algorithm from JBIG2 Annex B.3
 and outputs Rust code with the precomputed tree structure.
 """
 
-# Note: This script was AI-generated.
+# Note: This script was automatically generated.
 
 from dataclasses import dataclass
 from typing import Optional
